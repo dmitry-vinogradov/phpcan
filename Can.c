@@ -64,21 +64,21 @@ int php_can_strpos(char *haystack, char *needle, int offset)
 
 /**
  * Return part of a string
- * 
- * @param str The input string. Must be one character or longer. 
- * @param f   If start is non-negative, the returned string will start at the start'th position in string, 
+ *
+ * @param str The input string. Must be one character or longer.
+ * @param f   If start is non-negative, the returned string will start at the start'th position in string,
  *            counting from zero. For instance, in the string 'abcdef', the character at position 0 is 'a',
  *            the character at position 2 is 'c', and so forth.
  *            If start is negative, the returned string will start at the start'th character from the end of string.
  *            If string is less than or equal to start characters long, NULL will be returned.
- * @param l   If length is given and is positive, the string returned will contain at most length characters 
+ * @param l   If length is given and is positive, the string returned will contain at most length characters
  *            beginning from start (depending on the length of string).
- *            If length is given and is negative, then that many characters will be omitted from the end of string 
- *            (after the start position has been calculated when a start is negative). If start denotes the position 
+ *            If length is given and is negative, then that many characters will be omitted from the end of string
+ *            (after the start position has been calculated when a start is negative). If start denotes the position
  *            of this truncation or beyond, false will be returned.
  *            If length is given and is 0 an empty string will be returned.
- *            If length is omitted, the substring starting from start until the end of the string will be returned. 
- * @return 
+ *            If length is omitted, the substring starting from start until the end of the string will be returned.
+ * @return
  */
 char * php_can_substr(char *str, int f, int l)
 {
@@ -256,9 +256,9 @@ zval * php_can_strtr_array(char *str, int slen, HashTable *hash)
 /**
  * ignore SIGPIPE (or else it will bring our program down if the client closes its socket).
  * NB: if running under gdb, you might need to issue this gdb command:
- * handle SIGPIPE nostop noprint pass because, by default, gdb will stop our program execution 
+ * handle SIGPIPE nostop noprint pass because, by default, gdb will stop our program execution
  * (which we might not want).
- * @return 
+ * @return
  */
 static int php_can_ignore_sigpipe(void)
 {
@@ -341,7 +341,7 @@ zend_module_entry can_module_entry = {
 PHP_MINIT_FUNCTION(can)
 {
     CAN_G(can_event_base) = NULL;
-    
+
     php_can_ignore_sigpipe();
 
     return PHP_MINIT(can_exception)(INIT_FUNC_ARGS_PASSTHRU)
@@ -350,6 +350,8 @@ PHP_MINIT_FUNCTION(can)
         & PHP_MINIT(can_server_route)(INIT_FUNC_ARGS_PASSTHRU)
         & PHP_MINIT(can_server_websocket)(INIT_FUNC_ARGS_PASSTHRU)
         & PHP_MINIT(can_server_request)(INIT_FUNC_ARGS_PASSTHRU)
+        & PHP_MINIT(can_client)(INIT_FUNC_ARGS_PASSTHRU)
+        & PHP_MINIT(can_client_response)(INIT_FUNC_ARGS_PASSTHRU)
     ;
 }
 PHP_MSHUTDOWN_FUNCTION(can)
@@ -360,6 +362,8 @@ PHP_MSHUTDOWN_FUNCTION(can)
         & PHP_MSHUTDOWN(can_server_route)(INIT_FUNC_ARGS_PASSTHRU)
         & PHP_MSHUTDOWN(can_server_websocket)(INIT_FUNC_ARGS_PASSTHRU)
         & PHP_MSHUTDOWN(can_server_request)(INIT_FUNC_ARGS_PASSTHRU)
+        & PHP_MSHUTDOWN(can_client)(INIT_FUNC_ARGS_PASSTHRU)
+        & PHP_MSHUTDOWN(can_client_response)(INIT_FUNC_ARGS_PASSTHRU)
     ;
 }
 
@@ -371,6 +375,8 @@ PHP_RINIT_FUNCTION(can)
         & PHP_RINIT(can_server_route)(INIT_FUNC_ARGS_PASSTHRU)
         & PHP_RINIT(can_server_websocket)(INIT_FUNC_ARGS_PASSTHRU)
         & PHP_RINIT(can_server_request)(INIT_FUNC_ARGS_PASSTHRU)
+        & PHP_RINIT(can_client)(INIT_FUNC_ARGS_PASSTHRU)
+        & PHP_RINIT(can_client_response)(INIT_FUNC_ARGS_PASSTHRU)
     ;
 }
 PHP_RSHUTDOWN_FUNCTION(can)
@@ -381,6 +387,8 @@ PHP_RSHUTDOWN_FUNCTION(can)
         & PHP_RSHUTDOWN(can_server_route)(INIT_FUNC_ARGS_PASSTHRU)
         & PHP_RSHUTDOWN(can_server_websocket)(INIT_FUNC_ARGS_PASSTHRU)
         & PHP_RSHUTDOWN(can_server_request)(INIT_FUNC_ARGS_PASSTHRU)
+        & PHP_RSHUTDOWN(can_client)(INIT_FUNC_ARGS_PASSTHRU)
+        & PHP_RSHUTDOWN(can_client_response)(INIT_FUNC_ARGS_PASSTHRU)
     ;
 }
 

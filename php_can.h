@@ -26,11 +26,12 @@
 #include <evhttp.h>
 
 extern zend_module_entry can_module_entry;
-#define can_module_ptr &can_module_entry 
+#define can_module_ptr &can_module_entry
 #define phpext_can_ptr can_module_ptr
 
 #define PHP_CAN_NS "Can"
 #define PHP_CAN_SERVER_NS ZEND_NS_NAME(PHP_CAN_NS, "Server")
+#define PHP_CAN_CLIENT_NS ZEND_NS_NAME(PHP_CAN_NS, "Client")
 
 #if PHP_VERSION_ID < 50399
 #define zchar char
@@ -51,10 +52,10 @@ extern zend_module_entry can_module_entry;
 #define CHECK_ZVAL_NULL_PATH(p) (Z_STRLEN_P(p) != strlen(Z_STRVAL_P(p)))
 #endif
 
-ZEND_BEGIN_MODULE_GLOBALS(can) 
+ZEND_BEGIN_MODULE_GLOBALS(can)
     struct event_base *can_event_base;
 ZEND_END_MODULE_GLOBALS(can)
-        
+
 #ifdef ZTS
 #define CAN_G(v) TSRMG(can_globals_id, zend_can_globals *, v)
 #else
