@@ -88,13 +88,15 @@ static void client_dtor(void *object TSRMLS_DC)
 
 static void response_handler(struct evhttp_request *req, void *arg)
 {
-    php_printf("client_response_handler\n");
     TSRMLS_FETCH();
 
-    zval *zresponse, *args[1], retval;
-    struct php_can_client *client = (struct php_can_client*)arg;
+    zval *zresponse, *args[1], retval,
+         *zclient = (zval *)arg;
 
-    if (client->base != CAN_G(can_event_base)) {
+    struct php_can_client *client = (struct php_can_client*)
+        zend_object_store_get_object(zclient TSRMLS_CC);
+
+    if (client->base && client->base != CAN_G(can_event_base)) {
         event_base_loopexit(client->base, 0);
     }
 
@@ -121,6 +123,7 @@ static void response_handler(struct evhttp_request *req, void *arg)
     Z_DELREF_P(args[0]);
 
     zval_ptr_dtor(&zresponse);
+    zval_ptr_dtor(&zclient);
 }
 
 /**
@@ -224,39 +227,49 @@ static PHP_METHOD(CanClient, send)
     int port = evhttp_uri_get_port(client->uri);
     port = port == -1 ? 80 : port;
 
-    //client->base = CAN_G(can_event_base) != NULL ?
-    //    CAN_G(can_event_base) : event_base_new();
+    client->base = CAN_G(can_event_base) != NULL ?
+        CAN_G(can_event_base) : event_base_new();
 
-    client->evcon = evhttp_connection_base_new(CAN_G(can_event_base), NULL, host, port);
+    client->evcon = evhttp_connection_base_new(client->base, NULL, host, port);
     if (!client->evcon) {
-        php_printf("Cannot create new evhttp_connection\n");
+        php_can_throw_exception(
+            ce_can_RuntimeException TSRMLS_CC,
+            "Unable to create evhttp_connection"
+        );
+        return;
     } else {
-        php_printf("OK evhttp_connection_base_new(CAN_G(can_event_base), NULL, %s, %i)\n", host, port);
+        struct evhttp_request *req = evhttp_request_new(response_handler, getThis());
+        if (!req) {
+            php_can_throw_exception(
+                ce_can_RuntimeException TSRMLS_CC,
+                "Unable to create evhttp_request"
+            );
+            return;
+        } else {
+
+            zval **item;
+            PHP_CAN_FOREACH(client->headers, item) {
+                evhttp_add_header(req->output_headers, (const char*)strkey, (const char*)Z_STRVAL_PP(item));
+            }
+
+            if (NULL == evhttp_find_header(req->output_headers, "Host")) {
+                evhttp_add_header(req->output_headers, "Host", host);
+            }
+
+            char *uri = NULL;
+            spprintf(&uri, 0, "%s%s", strlen(path) ? path : "/", query ? query : "");
+            evhttp_make_request(client->evcon, req, client->method, (const char*)uri);
+            efree(uri);
+
+            Z_SET_REFCOUNT_P(getThis(), Z_REFCOUNT_P(getThis()) + 1);
+
+            if (client->base != CAN_G(can_event_base)) {
+                event_base_dispatch(client->base);
+            }
+        }
     }
 
-    struct evhttp_request *req = evhttp_request_new(response_handler, client);
-    if (!req) {
-        php_printf("Cannot create new evhttp_request\n");
-    }
 
-    zval **item;
-    PHP_CAN_FOREACH(client->headers, item) {
-        evhttp_add_header(req->output_headers, (const char*)strkey, (const char*)Z_STRVAL_PP(item));
-    }
-
-    if (NULL == evhttp_find_header(req->output_headers, "Host")) {
-        evhttp_add_header(req->output_headers, "Host", host);
-    }
-
-    char *uri = NULL;
-    spprintf(&uri, 0, "%s%s", path, query ? query : "");
-    php_printf("Making request for %s\n", uri);
-    evhttp_make_request(client->evcon, req, client->method, (const char*)uri);
-    efree(uri);
-
-    //if (client->base != CAN_G(can_event_base)) {
-    //    event_base_dispatch(client->base);
-    //}
 }
 
 

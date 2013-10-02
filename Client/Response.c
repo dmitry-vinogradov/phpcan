@@ -79,9 +79,25 @@ static PHP_METHOD(CanClientResponse, getCode)
 }
 
 /**
- * Get headers
+ * Get URL
  */
-static PHP_METHOD(CanClientResponse, getHeaders)
+static PHP_METHOD(CanClientResponse, getUrl)
+{
+    struct evkeyval *header;
+    struct php_can_client_response *response = (struct php_can_client_response*)
+        zend_object_store_get_object(getThis() TSRMLS_CC);
+
+    if (!response->req) {
+        RETURN_FALSE;
+    }
+
+    RETURN_STRING(response->req->uri, 1);
+}
+
+/**
+ * Get request headers
+ */
+static PHP_METHOD(CanClientResponse, getRequestHeaders)
 {
     struct evkeyval *header;
     struct php_can_client_response *response = (struct php_can_client_response*)
@@ -93,6 +109,28 @@ static PHP_METHOD(CanClientResponse, getHeaders)
 
     array_init(return_value);
     for (header = ((response->req->output_headers)->tqh_first);
+         header;
+         header = ((header)->next.tqe_next)
+    ) {
+        add_assoc_string(return_value, header->key, header->value, 1);
+    }
+}
+
+/**
+ * Get response headers
+ */
+static PHP_METHOD(CanClientResponse, getResponseHeaders)
+{
+    struct evkeyval *header;
+    struct php_can_client_response *response = (struct php_can_client_response*)
+        zend_object_store_get_object(getThis() TSRMLS_CC);
+
+    if (!response->req) {
+        RETURN_FALSE;
+    }
+
+    array_init(return_value);
+    for (header = ((response->req->input_headers)->tqh_first);
          header;
          header = ((header)->next.tqe_next)
     ) {
@@ -121,10 +159,12 @@ static PHP_METHOD(CanClientResponse, getBody)
 }
 
 static zend_function_entry client_response_methods[] = {
-    PHP_ME(CanClientResponse, __construct, NULL, ZEND_ACC_FINAL | ZEND_ACC_PROTECTED)
-    PHP_ME(CanClientResponse, getCode,     NULL, ZEND_ACC_FINAL | ZEND_ACC_PUBLIC)
-    PHP_ME(CanClientResponse, getHeaders,  NULL, ZEND_ACC_FINAL | ZEND_ACC_PUBLIC)
-    PHP_ME(CanClientResponse, getBody,     NULL, ZEND_ACC_FINAL | ZEND_ACC_PUBLIC)
+    PHP_ME(CanClientResponse, __construct,        NULL, ZEND_ACC_FINAL | ZEND_ACC_PROTECTED)
+    PHP_ME(CanClientResponse, getCode,            NULL, ZEND_ACC_FINAL | ZEND_ACC_PUBLIC)
+    PHP_ME(CanClientResponse, getUrl,             NULL, ZEND_ACC_FINAL | ZEND_ACC_PUBLIC)
+    PHP_ME(CanClientResponse, getRequestHeaders,  NULL, ZEND_ACC_FINAL | ZEND_ACC_PUBLIC)
+    PHP_ME(CanClientResponse, getResponseHeaders, NULL, ZEND_ACC_FINAL | ZEND_ACC_PUBLIC)
+    PHP_ME(CanClientResponse, getBody,            NULL, ZEND_ACC_FINAL | ZEND_ACC_PUBLIC)
     {NULL, NULL, NULL}
 };
 
