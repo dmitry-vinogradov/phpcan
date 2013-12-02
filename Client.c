@@ -253,11 +253,14 @@ static PHP_METHOD(CanClient, send)
             }
 
             if (NULL == evhttp_find_header(req->output_headers, "Host")) {
-                evhttp_add_header(req->output_headers, "Host", host);
+                char *hostval = NULL;
+                spprintf(&hostval, 0, "%s:%i", host, port);
+                evhttp_add_header(req->output_headers, "Host", hostval);
+                efree(hostval);
             }
 
             char *uri = NULL;
-            spprintf(&uri, 0, "%s%s", strlen(path) ? path : "/", query ? query : "");
+            spprintf(&uri, 0, "%s%s%s", strlen(path) ? path : "/", query ? "?" : "", query ? query : "");
             evhttp_make_request(client->evcon, req, client->method, (const char*)uri);
             efree(uri);
 

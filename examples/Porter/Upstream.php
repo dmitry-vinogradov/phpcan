@@ -53,11 +53,21 @@ $server->start(
                 }
             ),
             new Route(
-                '/svc',
+                '/svc/config',
                 function(Request $request, array $args)
                 {
-                    sleep(5);
-                    return 'scv returned';
+                    return '[
+                        {
+                            "pattern": "/login",
+                            "method": "GET|POST",
+                            "authlevel": 4
+                        },
+                        {
+                            "pattern": "/logout",
+                            "method": "GET",
+                            "authlevel": 2
+                        }
+                    ]';
                 }
             )
         )

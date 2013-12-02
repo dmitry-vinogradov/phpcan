@@ -714,7 +714,7 @@ static PHP_METHOD(CanServer, __construct)
         zchar *space, *class_name = get_active_class_name(&space TSRMLS_CC);
         php_can_throw_exception(
             ce_can_InvalidParametersException TSRMLS_CC,
-            "%s%s%s(string $ip, integer $port[, string $log_format[, string $log_handler]])",
+            "%s%s%s(string $ip, integer $port[, string $log_format[, resource $log_handler]])",
             class_name, space, get_active_function_name(TSRMLS_C)
         );
         return;

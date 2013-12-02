@@ -2,6 +2,8 @@
 
 namespace Porter;
 
+use \Can\Server as CanServer;
+
 class Session
 {
     protected $id;
@@ -10,7 +12,7 @@ class Session
     protected $payload;
     protected $provider;
 
-    public function __construct(SessionProvider $provider, $id, $userId = ANNON_USERID, $payload = '{}')
+    public function __construct(SessionProvider $provider, $id, $userId = CanServer::ANNON_USERID, $payload = '{}')
     {
         $this->id        = $id;
         $this->userId    = $userId;
