@@ -867,6 +867,25 @@ static char *get_realpath(char *path, int check_is_readable TSRMLS_DC)
     return NULL;
 }
 
+void sendfile_cb(struct evbuffer *buffer,
+    const struct evbuffer_cb_info *info, void *arg)
+{
+    TSRMLS_FETCH();
+    
+    zval *callback = (zval *)arg, *param, *args[1], retval;
+    MAKE_STD_ZVAL(param);
+    ZVAL_LONG(param, info->n_deleted);
+    args[0] = param;
+    Z_ADDREF_P(args[0]);
+    
+    if (call_user_function(EG(function_table), NULL, callback, &retval, 1, args TSRMLS_CC) == SUCCESS) {
+        zval_dtor(&retval);
+        Z_DELREF_P(args[0]);
+    }
+    
+    zval_ptr_dtor(&param);
+}
+
 /**
  * Send file
  */
@@ -874,20 +893,20 @@ static PHP_METHOD(CanServerRequest, sendFile)
 {
     char *filename, *root, *mimetype;
     int filename_len, root_len = 0, *mimetype_len = 0;
-    zval *download = NULL;
+    zval *download = NULL, *callback = NULL;
     long chunksize = 8192; // default chunksize 8 kB
     
 #if PHP_VERSION_ID < 50399
-#define TYPE_SPEC "s|sszl"
+#define TYPE_SPEC "s|sszlz"
 #define CAN_CHECK_NULL_PATH(p, l) (l > 0 && strlen(p) != l)
 #else
-#define TYPE_SPEC "p|pszl"
+#define TYPE_SPEC "p|pszlz"
 #define CAN_CHECK_NULL_PATH(p, l) (0)
 #endif
     
     if (FAILURE == zend_parse_parameters_ex(ZEND_PARSE_PARAMS_QUIET, ZEND_NUM_ARGS() TSRMLS_CC,
             TYPE_SPEC, &filename, &filename_len, &root, &root_len, 
-                     &mimetype, &mimetype_len, &download, &chunksize)
+                     &mimetype, &mimetype_len, &download, &chunksize, &callback)
         || filename_len == 0
         || CAN_CHECK_NULL_PATH(filename, filename_len)
         || CAN_CHECK_NULL_PATH(root, root_len)
@@ -895,10 +914,27 @@ static PHP_METHOD(CanServerRequest, sendFile)
         zchar *space, *class_name = get_active_class_name(&space TSRMLS_CC);
         php_can_throw_exception(
             ce_can_InvalidParametersException TSRMLS_CC,
-            "%s%s%s(string $filename[, string $root[, string $mimetype[, string $download[, int $chunksize=10240]]]])",
+            "%s%s%s(string $filename[, string $root[, string $mimetype[, string $download[, int $chunksize=10240[, callable $callback]]]]])",
             class_name, space, get_active_function_name(TSRMLS_C)
         );
         return;
+    }
+    
+    if (callback) {
+        char *func_name;
+        zend_bool is_callable = zend_is_callable(callback, 0, &func_name TSRMLS_CC);
+        if (!is_callable) {
+            php_can_throw_exception(
+                ce_can_InvalidCallbackException TSRMLS_CC,
+                "callback '%s' is not a valid callback",
+                func_name
+            );
+            efree(func_name);
+            return;
+        }
+        efree(func_name);
+        
+        zval_add_ref(&callback);
     }
     
     // do not serve requests for files begins with ``/..`` or ``../``
@@ -1193,7 +1229,7 @@ static PHP_METHOD(CanServerRequest, sendFile)
         
         if (client_ts >= st.st_mtime) {
             
-            // modification falg of the file is older than client's stamp
+            // modification flag of the file is older than client's stamp
             // so send "Not Modified" response
             request->response_code = 304;
             evhttp_send_reply(request->req, request->response_code, NULL, NULL);
@@ -1299,9 +1335,15 @@ static PHP_METHOD(CanServerRequest, sendFile)
                     }
                     request->response_len = range_len;
                     struct evbuffer *buffer = evbuffer_new();
+                    if (callback) {
+                        evbuffer_add_cb(buffer, sendfile_cb, callback);
+                    }
                     evbuffer_add_file(buffer, fd, range_from, range_len);
                     evhttp_send_reply(request->req, request->response_code, NULL, buffer);
                     evbuffer_free(buffer);
+                    if (callback) {
+                        zval_ptr_dtor(&callback);
+                    }
                 }
             }
         }
