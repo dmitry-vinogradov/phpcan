@@ -867,23 +867,16 @@ static char *get_realpath(char *path, int check_is_readable TSRMLS_DC)
     return NULL;
 }
 
-void sendfile_cb(struct evbuffer *buffer,
-    const struct evbuffer_cb_info *info, void *arg)
+void sendfile_on_connection_close_cb(struct evhttp_connection *evcon, void *arg)
 {
     TSRMLS_FETCH();
     
-    zval *callback = (zval *)arg, *param, *args[1], retval;
-    MAKE_STD_ZVAL(param);
-    ZVAL_LONG(param, info->n_deleted);
-    args[0] = param;
-    Z_ADDREF_P(args[0]);
-    
-    if (call_user_function(EG(function_table), NULL, callback, &retval, 1, args TSRMLS_CC) == SUCCESS) {
+    zval *callback = (zval *)arg, retval;
+    if (call_user_function(EG(function_table), NULL, callback, &retval, 0, NULL TSRMLS_CC) == SUCCESS) {
         zval_dtor(&retval);
-        Z_DELREF_P(args[0]);
     }
     
-    zval_ptr_dtor(&param);
+    zval_ptr_dtor(&callback);
 }
 
 /**
@@ -1041,7 +1034,7 @@ static PHP_METHOD(CanServerRequest, sendFile)
     
     // generate and add ETag
     char *etag = NULL;
-    int etag_len = spprintf(&etag, 0, "\"%x-%x-%x\"", (int)st.st_ino, (int)st.st_mtime, (int)st.st_size);
+    int etag_len = spprintf(&etag, 0, "\"%x-%x-%llX\"", (int)st.st_ino, (int)st.st_mtime, st.st_size);
     evhttp_add_header(request->req->output_headers, "ETag", etag);
     
     // handle $mimetype
@@ -1265,14 +1258,14 @@ static PHP_METHOD(CanServerRequest, sendFile)
             if (request->req->type == EVHTTP_REQ_HEAD) {
                 request->response_code = 200;
                 char *size = NULL;
-                spprintf(&size, 0, "%ld", (long)st.st_size);
+                spprintf(&size, 0, "%lld", st.st_size);
                 evhttp_add_header(request->req->output_headers, "Content-Length", size);
                 evhttp_send_reply(request->req, request->response_code, NULL, NULL);
                 efree(size);
             } else {
-            
+
                 // check if the client requested the ranged content
-                long range_from = 0, range_to = st.st_size, range_len;
+                off_t range_from = 0, range_to = st.st_size, range_len;
                 char *range = (char *)evhttp_find_header(request->req->input_headers, "Range");
                 if (range != NULL) {
                     int pos = php_can_strpos(range, "bytes=", 0);
@@ -1329,21 +1322,20 @@ static PHP_METHOD(CanServerRequest, sendFile)
                     
                     if (request->response_code == 206) {
                         char *range = NULL;
-                        spprintf(&range, 0, "bytes %ld-%ld/%ld", range_from, range_to, (long)st.st_size);
+                        spprintf(&range, 0, "bytes %lld-%lld/%lld", range_from, range_to, st.st_size);
                         evhttp_add_header(request->req->output_headers, "Content-Range", range);
                         efree(range);
                     }
-                    request->response_len = range_len;
+                    //request->response_len = range_len;
                     struct evbuffer *buffer = evbuffer_new();
+                    evbuffer_set_flags(buffer, EVBUFFER_FLAG_DRAINS_TO_FD);
                     if (callback) {
-                        evbuffer_add_cb(buffer, sendfile_cb, callback);
+                        struct evhttp_connection *evcon = evhttp_request_get_connection(request->req);
+                        evhttp_connection_set_closecb(evcon, sendfile_on_connection_close_cb, callback);
                     }
                     evbuffer_add_file(buffer, fd, range_from, range_len);
                     evhttp_send_reply(request->req, request->response_code, NULL, buffer);
                     evbuffer_free(buffer);
-                    if (callback) {
-                        zval_ptr_dtor(&callback);
-                    }
                 }
             }
         }
