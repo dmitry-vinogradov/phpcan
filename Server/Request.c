@@ -1292,16 +1292,16 @@ static PHP_METHOD(CanServerRequest, sendFile)
 
                             if (strlen(start) == 0) {
                                 // bytes=-100 -> last 100 bytes
-                                range_from = MAX(0, st.st_size - atol(end));
+                                range_from = MAX(0, st.st_size - atoll(end));
                                 range_to = st.st_size;
                             } else if (strlen(end) == 0) {
                                 // bytes=100- -> all but the first 99 bytes
-                                range_from = atol(start);
+                                range_from = atoll(start);
                                 range_to = st.st_size;
                             } else {
                                 // bytes=100-200 -> bytes 100-200 (inclusive)
-                                range_from = atol(start);
-                                range_to = MIN(atol(end) + 1, st.st_size);
+                                range_from = atoll(start);
+                                range_to = MIN(atoll(end) + 1, st.st_size);
                             }
                         }
                     }
