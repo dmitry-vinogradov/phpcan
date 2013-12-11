@@ -191,6 +191,14 @@ struct php_can_websocket_ctx {
     zval *data;
 };
 
+struct php_can_chunk_req_state {
+    struct evhttp_request *req;
+    int fd;
+    long chunksize;
+    off_t filesize;
+    off_t offset;
+};
+
 #define SETNOW(double_now) \
     double_now = 0.0;  struct timeval __tpnow = {0}; \
     if(gettimeofday(&__tpnow, NULL) == 0 ) \

@@ -29,6 +29,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+extern ZEND_DECLARE_MODULE_GLOBALS(can)
+
 zend_class_entry *ce_can_server_request;
 static zend_object_handlers server_request_obj_handlers;
 static HashTable *mimetypes = NULL;
@@ -879,6 +881,45 @@ void sendfile_on_connection_close_cb(struct evhttp_connection *evcon, void *arg)
     zval_ptr_dtor(&callback);
 }
 
+static void
+php_can_chunked_trickle_cb(evutil_socket_t fd, short events, void *arg)
+{
+    struct evbuffer *evb = evbuffer_new();
+    struct php_can_chunk_req_state *state = arg;
+    struct timeval when = { 0, 0 };
+    ev_ssize_t read;
+
+    if (lseek(state->fd, state->offset, SEEK_SET) == -1) {
+            evbuffer_free(evb);
+            close(state->fd);
+            free(state);
+            return;
+    }
+    
+    read = evbuffer_read(evb, state->fd, (ev_ssize_t)state->chunksize);
+    if (read == -1) {
+        evbuffer_free(evb);
+        evhttp_send_reply_end(state->req);
+        close(state->fd);
+        free(state);
+        return;
+    }
+
+    evhttp_send_reply_chunk(state->req, evb);
+    evbuffer_free(evb);
+    
+    state->offset += read;
+    
+    if (state->offset < state->filesize) {
+        event_base_once(CAN_G(can_event_base), -1, EV_TIMEOUT,
+            php_can_chunked_trickle_cb, state, &when);
+    } else {
+        evhttp_send_reply_end(state->req);
+        close(state->fd);
+        free(state);
+    }
+}
+
 /**
  * Send file
  */
@@ -887,7 +928,7 @@ static PHP_METHOD(CanServerRequest, sendFile)
     char *filename, *root, *mimetype;
     int filename_len, root_len = 0, *mimetype_len = 0;
     zval *download = NULL, *callback = NULL;
-    long chunksize = 8192; // default chunksize 8 kB
+    long chunksize = 0; // default chunksize 8 kB
     
 #if PHP_VERSION_ID < 50399
 #define TYPE_SPEC "s|sszlz"
@@ -907,7 +948,7 @@ static PHP_METHOD(CanServerRequest, sendFile)
         zchar *space, *class_name = get_active_class_name(&space TSRMLS_CC);
         php_can_throw_exception(
             ce_can_InvalidParametersException TSRMLS_CC,
-            "%s%s%s(string $filename[, string $root[, string $mimetype[, string $download[, int $chunksize=10240[, callable $callback]]]]])",
+            "%s%s%s(string $filename[, string $root[, string $mimetype[, string $download[, int $chunksize=null[, callable $callback]]]]])",
             class_name, space, get_active_function_name(TSRMLS_C)
         );
         return;
@@ -1326,16 +1367,40 @@ static PHP_METHOD(CanServerRequest, sendFile)
                         evhttp_add_header(request->req->output_headers, "Content-Range", range);
                         efree(range);
                     }
-                    //request->response_len = range_len;
-                    struct evbuffer *buffer = evbuffer_new();
-                    evbuffer_set_flags(buffer, EVBUFFER_FLAG_DRAINS_TO_FD);
+                    
                     if (callback) {
                         struct evhttp_connection *evcon = evhttp_request_get_connection(request->req);
                         evhttp_connection_set_closecb(evcon, sendfile_on_connection_close_cb, callback);
                     }
-                    evbuffer_add_file(buffer, fd, range_from, range_len);
-                    evhttp_send_reply(request->req, request->response_code, NULL, buffer);
-                    evbuffer_free(buffer);
+                    
+                    if (chunksize > 0) {
+                        
+                        struct timeval when = { 0, 0 };
+                        struct php_can_chunk_req_state *state = malloc(sizeof(struct php_can_chunk_req_state));
+                        memset(state, 0, sizeof(struct php_can_chunk_req_state));
+                        state->req = request->req;
+                        state->fd = fd;
+                        state->chunksize = chunksize;
+                        state->filesize = range_len;
+                        state->offset = 0;
+                        // set content length header to prevent chunked transfer
+                        char *length = NULL;
+                        spprintf(&length, 0, "%lld", range_len);
+                        evhttp_add_header(evhttp_request_get_output_headers(request->req), 
+                                "Content-Length", length);
+                        efree(length);
+                        evhttp_send_reply_start(request->req, request->response_code, NULL);
+                        event_base_once(CAN_G(can_event_base), -1, EV_TIMEOUT, 
+                                php_can_chunked_trickle_cb, state, &when);
+                        
+                    } else {
+
+                        struct evbuffer *buffer = evbuffer_new();
+                        evbuffer_set_flags(buffer, EVBUFFER_FLAG_DRAINS_TO_FD);
+                        evbuffer_add_file(buffer, fd, range_from, range_len);
+                        evhttp_send_reply(request->req, request->response_code, NULL, buffer);
+                        evbuffer_free(buffer);
+                    }
                 }
             }
         }
