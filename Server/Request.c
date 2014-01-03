@@ -1088,6 +1088,9 @@ static PHP_METHOD(CanServerRequest, sendFile)
         
         if (has_finfo) {
             
+            // allocate cache array where we store determined mimetypes
+            // to avoid calling finfo multiple times for the same file.
+            // We use ETAG as file identifier instead of filename.
             if (mimetypes == NULL) {
                 ALLOC_HASHTABLE(mimetypes);
                 zend_hash_init(mimetypes, 100, NULL, ZVAL_PTR_DTOR, 0);
@@ -1095,11 +1098,11 @@ static PHP_METHOD(CanServerRequest, sendFile)
             
             zval **cached;
             if (SUCCESS == zend_hash_find(mimetypes, etag, etag_len + 1, (void **)&cached)) {
-
+                // found cached mimetype entry
                 evhttp_add_header(request->req->output_headers, "Content-Type", Z_STRVAL_PP(cached));
                 
             } else {
-
+                // need to call finfo to determine mimetype
                 zval *retval_ptr, *object, **params[1], *arg, *zfilepath, *retval = NULL;
                 zend_fcall_info fci;
                 zend_fcall_info_cache fcc;
@@ -1382,7 +1385,7 @@ static PHP_METHOD(CanServerRequest, sendFile)
                         state->fd = fd;
                         state->chunksize = chunksize;
                         state->filesize = range_len;
-                        state->offset = 0;
+                        state->offset = range_from;
                         // set content length header to prevent chunked transfer
                         char *length = NULL;
                         spprintf(&length, 0, "%lld", range_len);
