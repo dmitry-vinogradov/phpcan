@@ -884,39 +884,50 @@ void sendfile_on_connection_close_cb(struct evhttp_connection *evcon, void *arg)
 static void
 php_can_chunked_trickle_cb(evutil_socket_t fd, short events, void *arg)
 {
+    TSRMLS_FETCH();
+    
+    php_printf("php_can_chunked_trickle_cb(), mem=%ld\n", (long) zend_memory_usage(0 TSRMLS_CC));
     struct evbuffer *evb = evbuffer_new();
     struct php_can_chunk_req_state *state = arg;
     struct timeval when = { 0, 0 };
     ev_ssize_t read;
 
     if (lseek(state->fd, state->offset, SEEK_SET) == -1) {
-            evbuffer_free(evb);
-            close(state->fd);
-            free(state);
-            return;
+        php_printf("   lseek() failed for offset %lld\n", state->offset);
+        evbuffer_free(evb);
+        close(state->fd);
+        free(state);
+        php_printf(" return with mem=%ld\n", (long) zend_memory_usage(0 TSRMLS_CC));
+        return;
     }
     
     read = evbuffer_read(evb, state->fd, (ev_ssize_t)state->chunksize);
     if (read == -1) {
+        php_printf("    evbuffer_read() failed, chunksize=%ld˜\n", state->chunksize);
         evbuffer_free(evb);
         evhttp_send_reply_end(state->req);
         close(state->fd);
         free(state);
+        php_printf(" return with mem=%ld\n", (long) zend_memory_usage(0 TSRMLS_CC));
         return;
     }
 
     evhttp_send_reply_chunk(state->req, evb);
     evbuffer_free(evb);
     
+    php_printf("    mem=%ld after evhttp_send_reply_chunk()\n", (long) zend_memory_usage(0 TSRMLS_CC));
+    
     state->offset += read;
     
     if (state->offset < state->filesize) {
         event_base_once(CAN_G(can_event_base), -1, EV_TIMEOUT,
             php_can_chunked_trickle_cb, state, &when);
+        php_printf("    mem=%ld after event_base_once()\n", (long) zend_memory_usage(0 TSRMLS_CC));
     } else {
         evhttp_send_reply_end(state->req);
         close(state->fd);
         free(state);
+        php_printf("    mem=%ld after evhttp_send_reply_end() and free\n", (long) zend_memory_usage(0 TSRMLS_CC));
     }
 }
 
@@ -1397,7 +1408,7 @@ static PHP_METHOD(CanServerRequest, sendFile)
                                 php_can_chunked_trickle_cb, state, &when);
                         
                     } else {
-
+                        
                         struct evbuffer *buffer = evbuffer_new();
                         evbuffer_set_flags(buffer, EVBUFFER_FLAG_DRAINS_TO_FD);
                         evbuffer_add_file(buffer, fd, range_from, range_len);
