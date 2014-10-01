@@ -38,6 +38,8 @@ struct php_can_client {
     long method;
     zval *handler;
     zval *headers;
+    char *data;
+    int data_len;
 };
 
 struct php_can_client_response {

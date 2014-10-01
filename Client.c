@@ -42,6 +42,8 @@ static zend_object_value client_ctor(zend_class_entry *ce TSRMLS_DC)
     client->uri = NULL;
     client->handler = NULL;
     client->headers = NULL;
+    client->data = NULL;
+    client->data_len = 0;
     zend_object_std_init(&client->std, ce TSRMLS_CC);
 
     retval.handle = zend_objects_store_put(client,
@@ -79,6 +81,12 @@ static void client_dtor(void *object TSRMLS_DC)
     if (client->headers) {
         zval_ptr_dtor(&client->headers);
         client->headers = NULL;
+    }
+    
+    if (client->data) {
+        efree(client->data);
+        client->data = NULL;
+        client->data_len = 0;
     }
 
     zend_objects_store_del_ref(&client->refhandle TSRMLS_CC);
@@ -132,18 +140,19 @@ static void response_handler(struct evhttp_request *req, void *arg)
  */
 static PHP_METHOD(CanClient, __construct)
 {
-    zval *url, *method = NULL, *headers = NULL;
+    zval *url, *method = NULL, *headers = NULL, *data = NULL;
     if (FAILURE == zend_parse_parameters_ex(ZEND_PARSE_PARAMS_QUIET, ZEND_NUM_ARGS() TSRMLS_CC,
-            "z|za", &url, &method, &headers)
+            "z|zaz", &url, &method, &headers, &data)
         || Z_TYPE_P(url) != IS_STRING
         || Z_STRLEN_P(url) == 0
         || (method && (Z_TYPE_P(method) != IS_LONG || Z_LVAL_P(method) < 1))
         || (headers && Z_TYPE_P(headers) != IS_ARRAY)
+        || (data && Z_TYPE_P(data) != IS_STRING)
     ) {
         zchar *space, *class_name = get_active_class_name(&space TSRMLS_CC);
         php_can_throw_exception(
             ce_can_InvalidParametersException TSRMLS_CC,
-            "%s%s%s(string $url[, integer $method = %s::METHOD_GET[, array $headers = array()]])",
+            "%s%s%s(string $url[, integer $method = %s::METHOD_GET[, array $headers = array()[, string $data]]])",
             class_name, space, get_active_function_name(TSRMLS_C), class_name
         );
         return;
@@ -181,6 +190,11 @@ static PHP_METHOD(CanClient, __construct)
     } else {
         MAKE_STD_ZVAL(client->headers);
         array_init(client->headers);
+    }
+    
+    if (data != NULL) {
+        client->data_len = Z_STRLEN_P(data);
+        client->data = estrndup(Z_STRVAL_P(data), client->data_len);
     }
 }
 
@@ -261,6 +275,15 @@ static PHP_METHOD(CanClient, send)
 
             char *uri = NULL;
             spprintf(&uri, 0, "%s%s%s", strlen(path) ? path : "/", query ? "?" : "", query ? query : "");
+            
+            if (client->data != NULL) {
+                struct evbuffer * output_buffer = evhttp_request_get_output_buffer(req);
+                evbuffer_add(output_buffer, client->data, client->data_len);
+                char header_val[22];
+                sprintf(header_val, "%ld", client->data_len);
+                evhttp_add_header(req->output_headers, "Content-Length", header_val);
+            }
+            
             evhttp_make_request(client->evcon, req, client->method, (const char*)uri);
             efree(uri);
 
