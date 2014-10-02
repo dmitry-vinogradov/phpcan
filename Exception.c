@@ -84,18 +84,19 @@ int php_can_throw_exception_code(zend_class_entry *ce TSRMLS_DC, long code, char
  */
 static PHP_METHOD(CanHttpForward, __construct)
 {
-    zval *url, *headers = NULL, *callback = NULL;
+    zval *url, *headers = NULL, *callback = NULL, *merge_headers = NULL;
     
     if (FAILURE == zend_parse_parameters_ex(ZEND_PARSE_PARAMS_QUIET, ZEND_NUM_ARGS() TSRMLS_CC,
-            "z|zz", &url, &headers, &callback)
+            "z|zzz", &url, &headers, &callback, &merge_headers)
         || Z_TYPE_P(url) != IS_STRING
         || Z_STRLEN_P(url) == 0
         || (headers && Z_TYPE_P(headers) != IS_ARRAY)
+        || (merge_headers && Z_TYPE_P(merge_headers) != IS_BOOL)
     ) {
         zchar *space, *class_name = get_active_class_name(&space TSRMLS_CC);
         php_can_throw_exception(
             ce_can_InvalidParametersException TSRMLS_CC,
-            "%s%s%s(string $url[, array $headers])",
+            "%s%s%s(string $url[, array $headers[, callable $handler[, bool $mergeHeaders = true]]])",
             class_name, space, get_active_function_name(TSRMLS_C)
         );
         return;
@@ -121,6 +122,11 @@ static PHP_METHOD(CanHttpForward, __construct)
     if (headers) {
         zend_update_property(ce_can_HTTPForward, getThis(), "headers", sizeof("headers")-1, headers TSRMLS_CC);
     }
+    long merge = 1;
+    if (merge_headers) {
+        merge = Z_BVAL_P(merge_headers);
+    }
+    zend_update_property_bool(ce_can_HTTPForward, getThis(), "merge_headers", sizeof("merge_headers")-1, merge TSRMLS_CC);
 }
 
 /**
@@ -207,6 +213,7 @@ void can_exceptions_init(TSRMLS_D)
         PHP_CAN_REGISTER_PROPERTY(ce_can_HTTPForward, "url", ZEND_ACC_PROTECTED);
         PHP_CAN_REGISTER_PROPERTY(ce_can_HTTPForward, "headers", ZEND_ACC_PROTECTED);
         PHP_CAN_REGISTER_PROPERTY(ce_can_HTTPForward, "callback", ZEND_ACC_PROTECTED);
+        PHP_CAN_REGISTER_PROPERTY(ce_can_HTTPForward, "merge_headers", ZEND_ACC_PROTECTED);
         
         
         // class \Can\HTTPError extends \Can\LogicException

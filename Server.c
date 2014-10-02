@@ -182,7 +182,7 @@ static void forward_response_callback(struct evhttp_request *response, void *arg
     free_client_ctx(ctx);
 }
 
-static void forward_request(const char *url, zval *zrequest, struct php_can_server *server, zval *headers, zval *callback)
+static void forward_request(const char *url, zval *zrequest, struct php_can_server *server, zval *headers, zval *callback, long merge)
 {
     struct php_can_server_request *request = (struct php_can_server_request*)
         zend_object_store_get_object(zrequest TSRMLS_CC);
@@ -222,9 +222,11 @@ static void forward_request(const char *url, zval *zrequest, struct php_can_serv
                     free_client_ctx(ctx);
                 } else {
 
-                    struct evkeyval *header;
-                    for (header=((request->req->input_headers)->tqh_first); header; header=((header)->next.tqe_next)) {
-                        evhttp_add_header(c_req->output_headers, header->key, header->value);
+                    if (merge) {
+                        struct evkeyval *header;
+                        for (header=((request->req->input_headers)->tqh_first); header; header=((header)->next.tqe_next)) {
+                                evhttp_add_header(c_req->output_headers, header->key, header->value);
+                        }
                     }
 
                     if (headers && Z_TYPE_P(headers) == IS_ARRAY) {
@@ -579,7 +581,8 @@ static void request_handler(struct evhttp_request *req, void *arg)
                                         zval *url = PHP_CAN_READ_PROPERTY(&retval, "url");
                                         zval *headers = PHP_CAN_READ_PROPERTY(&retval, "headers");
                                         zval *callback = PHP_CAN_READ_PROPERTY(&retval, "callback");
-                                        forward_request((const char *)Z_STRVAL_P(url), zrequest, server, headers, callback);
+                                        zval *merge = PHP_CAN_READ_PROPERTY(&retval, "merge_headers");
+                                        forward_request((const char *)Z_STRVAL_P(url), zrequest, server, headers, callback, Z_BVAL_P(merge));
 
                                     } else {
 
@@ -658,7 +661,9 @@ static void request_handler(struct evhttp_request *req, void *arg)
                 "headers", sizeof("headers")-1, 1 TSRMLS_CC);
             zval *callback = zend_read_property(Z_OBJCE_P(EG(exception)), EG(exception),
                 "callback", sizeof("callback")-1, 1 TSRMLS_CC);
-            forward_request((const char *)Z_STRVAL_P(url), zrequest, server, headers, callback);
+            zval *merge = zend_read_property(Z_OBJCE_P(EG(exception)), EG(exception),
+                "merge_headers", sizeof("merge_headers")-1, 1 TSRMLS_CC);
+            forward_request((const char *)Z_STRVAL_P(url), zrequest, server, headers, callback, Z_BVAL_P(merge));
 
         } else {
             zval *file = NULL, *line = NULL, *error = NULL;
