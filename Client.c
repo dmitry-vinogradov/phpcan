@@ -147,7 +147,7 @@ static PHP_METHOD(CanClient, __construct)
         || Z_STRLEN_P(url) == 0
         || (method && (Z_TYPE_P(method) != IS_LONG || Z_LVAL_P(method) < 1))
         || (headers && Z_TYPE_P(headers) != IS_ARRAY)
-        || (data && Z_TYPE_P(data) != IS_STRING)
+        || (data && Z_TYPE_P(data) != IS_NULL && Z_TYPE_P(data) != IS_STRING)
     ) {
         zchar *space, *class_name = get_active_class_name(&space TSRMLS_CC);
         php_can_throw_exception(
@@ -192,7 +192,7 @@ static PHP_METHOD(CanClient, __construct)
         array_init(client->headers);
     }
     
-    if (data != NULL) {
+    if (data != NULL && Z_TYPE_P(data) != IS_NULL) {
         client->data_len = Z_STRLEN_P(data);
         client->data = estrndup(Z_STRVAL_P(data), client->data_len);
     }
